@@ -1,0 +1,4 @@
+# 供 GitHub Actions / build.bat 打包 exe 时安装依赖
+# Python 3.8：兼容 Windows 7 SP1
+img2pdf>=0.5.0
+pyinstaller>=5.13.2,<6.4.0
