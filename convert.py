@@ -31,12 +31,15 @@ def build_parser() -> argparse.ArgumentParser:
 def resolve_output(inputs: list[Path], output: str | None, separate: bool) -> Path:
     if output:
         return Path(output)
-    if separate:
-        if len(inputs) == 1 and inputs[0].is_dir():
-            return inputs[0]
-        return Path.cwd()
     if len(inputs) == 1 and inputs[0].is_file():
         return inputs[0].with_suffix(".pdf")
+    if len(inputs) == 1 and inputs[0].is_dir():
+        folder = inputs[0]
+        if separate:
+            return folder.parent
+        return folder.parent / f"{folder.name}.pdf"
+    if separate:
+        return Path.cwd()
     return Path.cwd() / "输出.pdf"
 
 
