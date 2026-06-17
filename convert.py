@@ -7,12 +7,12 @@ import argparse
 import sys
 from pathlib import Path
 
-from processor import collect_images, convert_files_to_pdf, resolve_output
+from processor import collect_images, convert_files_to_pdf, merge_pdfs, resolve_merge_output, resolve_output
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="将图片直接转换为 PDF",
+        description="将图片转换为 PDF，或合并多个 PDF",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
@@ -21,17 +21,22 @@ def build_parser() -> argparse.ArgumentParser:
   ImageToPDF.exe 图片.jpg -o 输出.pdf
   ImageToPDF.exe ./照片文件夹 -o 合并.pdf
   ImageToPDF.exe ./照片文件夹 --separate -o ./输出目录
+  ImageToPDF.exe --merge-pdf 文件1.pdf 文件2.pdf -o 合并.pdf
         """,
     )
-    parser.add_argument("input", nargs="*", help="输入图片或文件夹，可多个")
+    parser.add_argument("input", nargs="*", help="输入图片、文件夹或 PDF 文件")
     parser.add_argument("-o", "--output", help="输出 PDF 路径或输出目录")
     parser.add_argument("--separate", action="store_true", help="每张图单独输出 PDF")
+    parser.add_argument("--merge-pdf", action="store_true", help="合并多个 PDF 文件")
     return parser
 
 
 def cli_main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.merge_pdf:
+        return _cli_merge_pdfs(args)
 
     inputs = [Path(p) for p in args.input]
     for path in inputs:
@@ -73,6 +78,62 @@ def cli_main(argv: list[str] | None = None) -> int:
         _show_cli_result_dialog(count, errors, output, args.separate)
 
     return 0
+
+
+def _cli_merge_pdfs(args: argparse.Namespace) -> int:
+    inputs = [Path(p) for p in args.input]
+    if len(inputs) < 2:
+        print("错误: 合并 PDF 至少需要 2 个文件", file=sys.stderr)
+        return 1
+
+    for path in inputs:
+        if not path.exists():
+            print(f"错误: 路径不存在 -> {path}", file=sys.stderr)
+            return 1
+        if path.suffix.lower() != ".pdf":
+            print(f"错误: 不是 PDF 文件 -> {path}", file=sys.stderr)
+            return 1
+
+    output = resolve_merge_output(inputs, args.output)
+    print(f"共 {len(inputs)} 个 PDF，开始合并...")
+    count, errors = merge_pdfs(inputs, output)
+
+    if count == 0:
+        print("合并失败:", file=sys.stderr)
+        for err in errors:
+            print(f"  - {err}", file=sys.stderr)
+        if not sys.stdout.isatty():
+            _show_cli_error_dialog(errors)
+        return 1
+
+    print(f"完成: 成功合并 {count} 个 PDF")
+    print(f"输出文件: {output.resolve()}")
+
+    if errors:
+        print(f"警告: {len(errors)} 个文件失败", file=sys.stderr)
+        for err in errors:
+            print(f"  - {err}", file=sys.stderr)
+
+    if not sys.stdout.isatty():
+        _show_cli_merge_result_dialog(count, errors, output)
+
+    return 0
+
+
+def _show_cli_merge_result_dialog(count: int, errors: list[str], output: Path) -> None:
+    import tkinter as tk
+    from tkinter import messagebox
+
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+
+    detail = f"输出文件：\n{output.resolve()}"
+    if errors:
+        detail += f"\n\n有 {len(errors)} 个 PDF 失败。"
+
+    messagebox.showinfo("合并完成", f"已成功合并 {count} 个 PDF。\n\n{detail}")
+    root.destroy()
 
 
 def _show_cli_error_dialog(errors: list[str]) -> None:

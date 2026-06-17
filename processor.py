@@ -1,4 +1,4 @@
-"""图片转 PDF 处理核心。"""
+"""图片转 PDF 与 PDF 合并处理核心。"""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Iterable, List, Tuple
 
 import img2pdf
+from pypdf import PdfReader, PdfWriter
 
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
 
@@ -91,5 +92,41 @@ def convert_files_to_pdf(
             success += 1
         except Exception as exc:  # noqa: BLE001
             errors.append(f"{path.name}: {exc}")
+
+    return success, errors
+
+
+def is_pdf(path: Path) -> bool:
+    return path.suffix.lower() == ".pdf"
+
+
+def resolve_merge_output(pdf_paths: list[Path], output: str | None) -> Path:
+    if output:
+        return Path(output)
+    if len(pdf_paths) == 1:
+        return pdf_paths[0].with_name(f"{pdf_paths[0].stem}_合并.pdf")
+    return pdf_paths[0].parent / "合并.pdf"
+
+
+def merge_pdfs(pdf_paths: List[Path], output_path: Path) -> Tuple[int, List[str]]:
+    writer = PdfWriter()
+    success = 0
+    errors: List[str] = []
+
+    for path in pdf_paths:
+        try:
+            reader = PdfReader(str(path))
+            for page in reader.pages:
+                writer.add_page(page)
+            success += 1
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"{path.name}: {exc}")
+
+    if success == 0:
+        return 0, errors
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("wb") as handle:
+        writer.write(handle)
 
     return success, errors

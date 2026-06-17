@@ -13,6 +13,7 @@ from PyInstaller.utils.hooks import collect_all
 block_cipher = None
 
 img2pdf_datas, img2pdf_binaries, img2pdf_hidden = collect_all("img2pdf")
+pypdf_datas, pypdf_binaries, pypdf_hidden = collect_all("pypdf")
 
 vc_runtime_binaries = []
 python_dir = os.path.dirname(sys.executable)
@@ -40,10 +41,11 @@ for search_dir in [python_dir, os.path.join(python_dir, "DLLs")]:
 a = Analysis(
     ["convert.py"],
     pathex=[],
-    binaries=vc_runtime_binaries + img2pdf_binaries,
-    datas=img2pdf_datas,
+    binaries=vc_runtime_binaries + img2pdf_binaries + pypdf_binaries,
+    datas=img2pdf_datas + pypdf_datas,
     hiddenimports=[
         "img2pdf",
+        "pypdf",
         "processor",
         "gui",
         "tkinter",
@@ -51,7 +53,8 @@ a = Analysis(
         "encodings.gbk",
         "encodings.mbcs",
     ]
-    + img2pdf_hidden,
+    + img2pdf_hidden
+    + pypdf_hidden,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

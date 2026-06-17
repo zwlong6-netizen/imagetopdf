@@ -1,6 +1,6 @@
 # 图片转 PDF
 
-将图片直接转换为 PDF，支持单张图片或文件夹批量合并。
+将图片直接转换为 PDF，支持单张图片或文件夹批量合并；也支持多个 PDF 一键合并。
 
 **使用方式：** Mac 上传代码到 GitHub → Actions 自动打包 → Windows 下载 exe 运行。
 
@@ -25,7 +25,10 @@ GitHub Actions 在 `windows-latest`（x86_64）上构建，Mac ARM 只需负责�
 
 ## 使用方式
 
-**图形界面（推荐）：** 双击 `ImageToPDF.exe` 即可打开界面，选择图片或文件夹后点击「开始转换」。
+**图形界面（推荐）：** 双击 `ImageToPDF.exe` 即可打开界面。
+
+- **图片转 PDF**：选择图片或文件夹后点击「开始转换」
+- **PDF 合并**：切换到「PDF 合并」标签页，添加多个 PDF 后点击「开始合并」
 
 **命令行：**
 
@@ -34,6 +37,7 @@ ImageToPDF.exe 图片.jpg
 ImageToPDF.exe 图片.jpg -o 输出.pdf
 ImageToPDF.exe 文件夹 -o 合并.pdf
 ImageToPDF.exe 文件夹 --separate -o 输出目录
+ImageToPDF.exe --merge-pdf 文件1.pdf 文件2.pdf -o 合并.pdf
 ```
 
 - 单张图片：在图片同目录生成同名 PDF（或通过 `-o` 指定路径）
@@ -47,6 +51,7 @@ ImageToPDF.exe 文件夹 --separate -o 输出目录
 |------|------|
 | `-o` | 输出 PDF 或目录 |
 | `--separate` | 每张图单独 PDF |
+| `--merge-pdf` | 合并多个 PDF 文件 |
 
 ## 文件说明
 

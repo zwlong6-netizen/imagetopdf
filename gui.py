@@ -1,16 +1,30 @@
-"""图片转 PDF 图形界面。"""
+"""图片转 PDF / PDF 合并图形界面。"""
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from processor import collect_images, convert_files_to_pdf, resolve_output
+from processor import (
+    collect_images,
+    convert_files_to_pdf,
+    merge_pdfs,
+    resolve_merge_output,
+    resolve_output,
+)
 
 IMAGE_TYPES = [
     ("图片文件", "*.jpg *.jpeg *.png *.bmp *.tif *.tiff *.webp"),
+    ("所有文件", "*.*"),
+]
+
+PDF_TYPES = [
+    ("PDF 文件", "*.pdf"),
     ("所有文件", "*.*"),
 ]
 
@@ -19,33 +33,51 @@ class App(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("图片转 PDF")
-        self.geometry("560x380")
-        self.minsize(480, 320)
+        self.geometry("600x520")
+        self.minsize(520, 420)
         self.resizable(True, True)
 
         self.input_path = tk.StringVar()
         self.output_preview = tk.StringVar(value="选择图片或文件夹后显示输出位置")
-        self.status_text = tk.StringVar(value="就绪")
         self._busy = False
-        self.input_path.trace_add("write", lambda *_: self._update_output_preview())
+        self.input_path.trace_add("write", lambda *_: self._update_image_output_preview())
+
+        self._pdf_paths: list[Path] = []
+        self.merge_output_preview = tk.StringVar(value="添加 PDF 文件后显示输出位置")
 
         self._build_ui()
 
     def _build_ui(self) -> None:
         padding = {"padx": 16, "pady": 6}
 
-        header = ttk.Label(self, text="图片转 PDF", font=("Microsoft YaHei UI", 16, "bold"))
-        header.pack(anchor="w", padx=16, pady=(16, 8))
+        notebook = ttk.Notebook(self)
+        notebook.pack(fill="both", expand=True, padx=16, pady=(16, 0))
 
+        image_tab = ttk.Frame(notebook, padding=4)
+        merge_tab = ttk.Frame(notebook, padding=4)
+        notebook.add(image_tab, text="图片转 PDF")
+        notebook.add(merge_tab, text="PDF 合并")
+
+        self._build_image_tab(image_tab, padding)
+        self._build_merge_tab(merge_tab, padding)
+
+        status_frame = ttk.LabelFrame(self, text="状态", padding=12)
+        status_frame.pack(fill="both", expand=True, **padding)
+
+        self.log = tk.Text(status_frame, height=8, wrap="word", state="disabled")
+        self.log.pack(fill="both", expand=True)
+        self._append_log("欢迎使用。可在「图片转 PDF」或「PDF 合并」标签页中操作。")
+
+    def _build_image_tab(self, parent: ttk.Frame, padding: dict) -> None:
         hint = ttk.Label(
-            self,
+            parent,
             text="支持单张图片或整个文件夹；文件夹会按文件名顺序合并为一个 PDF。",
             wraplength=520,
         )
-        hint.pack(anchor="w", **padding)
+        hint.pack(anchor="w", pady=(0, 8))
 
-        input_frame = ttk.LabelFrame(self, text="输入", padding=12)
-        input_frame.pack(fill="x", **padding)
+        input_frame = ttk.LabelFrame(parent, text="输入", padding=12)
+        input_frame.pack(fill="x", pady=6)
 
         entry = ttk.Entry(input_frame, textvariable=self.input_path)
         entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
@@ -53,39 +85,79 @@ class App(tk.Tk):
         ttk.Button(input_frame, text="选图片", command=self._pick_file, width=8).pack(side="left", padx=(0, 4))
         ttk.Button(input_frame, text="选文件夹", command=self._pick_folder, width=8).pack(side="left")
 
-        output_frame = ttk.LabelFrame(self, text="输出", padding=12)
-        output_frame.pack(fill="x", **padding)
+        output_frame = ttk.LabelFrame(parent, text="输出", padding=12)
+        output_frame.pack(fill="x", pady=6)
 
         ttk.Label(output_frame, textvariable=self.output_preview, wraplength=500).pack(anchor="w")
 
-        action_frame = ttk.Frame(self)
-        action_frame.pack(fill="x", **padding)
+        action_frame = ttk.Frame(parent)
+        action_frame.pack(fill="x", pady=6)
 
         self.convert_btn = ttk.Button(action_frame, text="开始转换", command=self._start_convert, width=12)
         self.convert_btn.pack(side="left")
 
-        ttk.Button(action_frame, text="打开输出目录", command=self._open_output_dir, width=12).pack(side="left", padx=(8, 0))
+        ttk.Button(action_frame, text="打开输出目录", command=self._open_image_output_dir, width=12).pack(
+            side="left", padx=(8, 0)
+        )
 
-        status_frame = ttk.LabelFrame(self, text="状态", padding=12)
-        status_frame.pack(fill="both", expand=True, **padding)
+    def _build_merge_tab(self, parent: ttk.Frame, padding: dict) -> None:
+        hint = ttk.Label(
+            parent,
+            text="添加多个 PDF 文件，按列表顺序合并为一个 PDF。可调整顺序后一键合并。",
+            wraplength=520,
+        )
+        hint.pack(anchor="w", pady=(0, 8))
 
-        self.log = tk.Text(status_frame, height=8, wrap="word", state="disabled")
-        self.log.pack(fill="both", expand=True)
-        self._append_log("欢迎使用。请选择图片或文件夹，然后点击「开始转换」。")
+        list_frame = ttk.LabelFrame(parent, text="待合并 PDF（按顺序）", padding=12)
+        list_frame.pack(fill="both", expand=True, pady=6)
+
+        list_container = ttk.Frame(list_frame)
+        list_container.pack(fill="both", expand=True)
+
+        scrollbar = ttk.Scrollbar(list_container)
+        scrollbar.pack(side="right", fill="y")
+
+        self.pdf_listbox = tk.Listbox(list_container, height=6, yscrollcommand=scrollbar.set)
+        self.pdf_listbox.pack(side="left", fill="both", expand=True)
+        scrollbar.config(command=self.pdf_listbox.yview)
+
+        btn_row = ttk.Frame(list_frame)
+        btn_row.pack(fill="x", pady=(8, 0))
+
+        ttk.Button(btn_row, text="添加 PDF", command=self._add_pdfs, width=10).pack(side="left")
+        ttk.Button(btn_row, text="移除", command=self._remove_selected_pdf, width=8).pack(side="left", padx=(4, 0))
+        ttk.Button(btn_row, text="上移", command=lambda: self._move_pdf(-1), width=6).pack(side="left", padx=(4, 0))
+        ttk.Button(btn_row, text="下移", command=lambda: self._move_pdf(1), width=6).pack(side="left", padx=(4, 0))
+        ttk.Button(btn_row, text="清空", command=self._clear_pdfs, width=6).pack(side="left", padx=(4, 0))
+
+        output_frame = ttk.LabelFrame(parent, text="输出", padding=12)
+        output_frame.pack(fill="x", pady=6)
+
+        ttk.Label(output_frame, textvariable=self.merge_output_preview, wraplength=500).pack(anchor="w")
+
+        action_frame = ttk.Frame(parent)
+        action_frame.pack(fill="x", pady=6)
+
+        self.merge_btn = ttk.Button(action_frame, text="开始合并", command=self._start_merge, width=12)
+        self.merge_btn.pack(side="left")
+
+        ttk.Button(action_frame, text="打开输出目录", command=self._open_merge_output_dir, width=12).pack(
+            side="left", padx=(8, 0)
+        )
 
     def _pick_file(self) -> None:
         path = filedialog.askopenfilename(title="选择图片", filetypes=IMAGE_TYPES)
         if path:
             self.input_path.set(path)
-            self._update_output_preview()
+            self._update_image_output_preview()
 
     def _pick_folder(self) -> None:
         path = filedialog.askdirectory(title="选择文件夹")
         if path:
             self.input_path.set(path)
-            self._update_output_preview()
+            self._update_image_output_preview()
 
-    def _update_output_preview(self) -> None:
+    def _update_image_output_preview(self) -> None:
         raw = self.input_path.get().strip()
         if not raw:
             self.output_preview.set("选择图片或文件夹后显示输出位置")
@@ -99,6 +171,73 @@ class App(tk.Tk):
         output = resolve_output([path], None, separate=False)
         self.output_preview.set(str(output.resolve()))
 
+    def _refresh_pdf_listbox(self) -> None:
+        self.pdf_listbox.delete(0, "end")
+        for path in self._pdf_paths:
+            self.pdf_listbox.insert("end", path.name)
+        self._update_merge_output_preview()
+
+    def _update_merge_output_preview(self) -> None:
+        if not self._pdf_paths:
+            self.merge_output_preview.set("添加 PDF 文件后显示输出位置")
+            return
+
+        output = resolve_merge_output(self._pdf_paths, None)
+        self.merge_output_preview.set(str(output.resolve()))
+
+    def _add_pdfs(self) -> None:
+        paths = filedialog.askopenfilenames(title="选择 PDF 文件", filetypes=PDF_TYPES)
+        if not paths:
+            return
+
+        existing = {path.resolve() for path in self._pdf_paths}
+        added = 0
+        for raw in paths:
+            path = Path(raw)
+            resolved = path.resolve()
+            if resolved in existing:
+                continue
+            self._pdf_paths.append(path)
+            existing.add(resolved)
+            added += 1
+
+        if added:
+            self._refresh_pdf_listbox()
+            self._append_log(f"已添加 {added} 个 PDF 文件。")
+
+    def _remove_selected_pdf(self) -> None:
+        selection = self.pdf_listbox.curselection()
+        if not selection:
+            return
+        index = selection[0]
+        removed = self._pdf_paths.pop(index)
+        self._refresh_pdf_listbox()
+        self._append_log(f"已移除：{removed.name}")
+
+    def _move_pdf(self, direction: int) -> None:
+        selection = self.pdf_listbox.curselection()
+        if not selection:
+            return
+
+        index = selection[0]
+        new_index = index + direction
+        if new_index < 0 or new_index >= len(self._pdf_paths):
+            return
+
+        self._pdf_paths[index], self._pdf_paths[new_index] = (
+            self._pdf_paths[new_index],
+            self._pdf_paths[index],
+        )
+        self._refresh_pdf_listbox()
+        self.pdf_listbox.selection_set(new_index)
+
+    def _clear_pdfs(self) -> None:
+        if not self._pdf_paths:
+            return
+        self._pdf_paths.clear()
+        self._refresh_pdf_listbox()
+        self._append_log("已清空 PDF 列表。")
+
     def _append_log(self, message: str) -> None:
         self.log.configure(state="normal")
         self.log.insert("end", message + "\n")
@@ -109,6 +248,7 @@ class App(tk.Tk):
         self._busy = busy
         state = "disabled" if busy else "normal"
         self.convert_btn.configure(state=state)
+        self.merge_btn.configure(state=state)
 
     def _start_convert(self) -> None:
         if self._busy:
@@ -131,7 +271,6 @@ class App(tk.Tk):
 
         output = resolve_output([path], None, separate=False)
         self._set_busy(True)
-        self.status_text.set("转换中...")
         self._append_log(f"共 {len(images)} 张图片，开始转换...")
         self._append_log(f"输出：{output.resolve()}")
 
@@ -172,7 +311,78 @@ class App(tk.Tk):
         self._append_log(f"错误：{message}")
         messagebox.showerror("错误", message)
 
-    def _open_output_dir(self) -> None:
+    def _start_merge(self) -> None:
+        if self._busy:
+            return
+
+        if len(self._pdf_paths) < 2:
+            messagebox.showwarning("提示", "请至少添加 2 个 PDF 文件后再合并。")
+            return
+
+        for path in self._pdf_paths:
+            if not path.exists():
+                messagebox.showerror("错误", f"文件不存在：\n{path}")
+                return
+
+        output = resolve_merge_output(self._pdf_paths, None)
+        self._set_busy(True)
+        self._append_log(f"共 {len(self._pdf_paths)} 个 PDF，开始合并...")
+        self._append_log(f"输出：{output.resolve()}")
+
+        pdf_paths = list(self._pdf_paths)
+        thread = threading.Thread(
+            target=self._run_merge,
+            args=(pdf_paths, output),
+            daemon=True,
+        )
+        thread.start()
+
+    def _run_merge(self, pdf_paths: list[Path], output: Path) -> None:
+        try:
+            count, errors = merge_pdfs(pdf_paths, output)
+            self.after(0, lambda: self._on_merge_done(count, errors, output))
+        except Exception as exc:  # noqa: BLE001
+            self.after(0, lambda: self._on_merge_failed(str(exc)))
+
+    def _on_merge_done(self, count: int, errors: list[str], output: Path) -> None:
+        self._set_busy(False)
+        if count == 0:
+            self._append_log("合并失败。")
+            for err in errors:
+                self._append_log(f"  - {err}")
+            messagebox.showerror("合并失败", "\n".join(errors) if errors else "未知错误")
+            return
+
+        self._append_log(f"完成：成功合并 {count} 个 PDF")
+        for err in errors:
+            self._append_log(f"警告：{err}")
+
+        msg = f"已成功合并 {count} 个 PDF。\n\n输出文件：\n{output.resolve()}"
+        if errors:
+            msg += f"\n\n有 {len(errors)} 个文件失败，详见状态栏。"
+        messagebox.showinfo("合并完成", msg)
+
+    def _on_merge_failed(self, message: str) -> None:
+        self._set_busy(False)
+        self._append_log(f"错误：{message}")
+        messagebox.showerror("错误", message)
+
+    def _open_directory(self, target_dir: Path) -> None:
+        if not target_dir.exists():
+            messagebox.showwarning("提示", "输出目录尚不存在，请先完成一次操作。")
+            return
+
+        try:
+            if sys.platform == "darwin":
+                subprocess.run(["open", str(target_dir)], check=False)
+            elif sys.platform == "win32":
+                os.startfile(str(target_dir))  # noqa: S606
+            else:
+                subprocess.run(["xdg-open", str(target_dir)], check=False)
+        except OSError as exc:
+            messagebox.showerror("错误", f"无法打开目录：{exc}")
+
+    def _open_image_output_dir(self) -> None:
         raw = self.input_path.get().strip()
         if not raw:
             messagebox.showwarning("提示", "请先选择图片或文件夹。")
@@ -185,23 +395,15 @@ class App(tk.Tk):
 
         output = resolve_output([path], None, separate=False)
         target_dir = output.parent if output.suffix.lower() == ".pdf" else output
-        if not target_dir.exists():
-            messagebox.showwarning("提示", "输出目录尚不存在，请先完成一次转换。")
+        self._open_directory(target_dir)
+
+    def _open_merge_output_dir(self) -> None:
+        if not self._pdf_paths:
+            messagebox.showwarning("提示", "请先添加 PDF 文件。")
             return
 
-        import os
-        import subprocess
-        import sys
-
-        try:
-            if sys.platform == "darwin":
-                subprocess.run(["open", str(target_dir)], check=False)
-            elif sys.platform == "win32":
-                os.startfile(str(target_dir))  # noqa: S606
-            else:
-                subprocess.run(["xdg-open", str(target_dir)], check=False)
-        except OSError as exc:
-            messagebox.showerror("错误", f"无法打开目录：{exc}")
+        output = resolve_merge_output(self._pdf_paths, None)
+        self._open_directory(output.parent)
 
 
 def main() -> None:
