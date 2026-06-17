@@ -15,11 +15,11 @@ if not exist "ImageToPDF.exe" (
 )
 
 if "%~1"=="" (
-    echo 用法: 把图片拖到此 bat 文件上，或:
-    echo   运行示例.bat 图片.jpg
-    echo   运行示例.bat 图片.jpg -o 输出.pdf
+    echo 未指定文件，启动图形界面...
+    "%EXE%"
+    echo.
     pause
-    exit /b 1
+    exit /b 0
 )
 
 "%EXE%" %*

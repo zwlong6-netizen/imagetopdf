@@ -23,7 +23,7 @@ VSVersionInfo(
             StringStruct(u'OriginalFilename', u'ImageToPDF.exe'),
             StringStruct(u'ProductName', u'图片转 PDF'),
             StringStruct(u'LegalCopyright', u''),
-            StringStruct(u'Comments', u'将图片直接转换为 PDF'),
+            StringStruct(u'Comments', u'将图片直接转换为 PDF，支持图形界面'),
           ]
         )
       ]

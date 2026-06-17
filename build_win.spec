@@ -45,6 +45,8 @@ a = Analysis(
     hiddenimports=[
         "img2pdf",
         "processor",
+        "gui",
+        "tkinter",
         "encodings.utf_8",
         "encodings.gbk",
         "encodings.mbcs",
@@ -74,7 +76,7 @@ exe = EXE(
     upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

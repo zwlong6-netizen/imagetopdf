@@ -23,7 +23,11 @@ GitHub Actions 在 `windows-latest`（x86_64）上构建，Mac ARM 只需负责�
 
 > 使用 **Python 3.8** 打包，以兼容 Windows 7。Windows 8 及以上无特殊要求。
 
-## exe 用法
+## 使用方式
+
+**图形界面（推荐）：** 双击 `ImageToPDF.exe` 即可打开界面，选择图片或文件夹后点击「开始转换」。
+
+**命令行：**
 
 ```cmd
 ImageToPDF.exe 图片.jpg
@@ -48,7 +52,8 @@ ImageToPDF.exe 文件夹 --separate -o 输出目录
 
 | 文件 | 作用 |
 |------|------|
-| `convert.py` | 命令行入口 |
+| `convert.py` | 程序入口（无参数开界面，有参数走命令行） |
+| `gui.py` | 图形界面 |
 | `processor.py` | 转换核心 |
 | `build_win.spec` | PyInstaller 配置 |
 | `version_info.txt` | exe 版本信息 |

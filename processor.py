@@ -40,6 +40,21 @@ def save_images_as_pdf(image_paths: List[Path], output_path: Path) -> None:
     output_path.write_bytes(pdf_bytes)
 
 
+def resolve_output(inputs: list[Path], output: str | None, separate: bool) -> Path:
+    if output:
+        return Path(output)
+    if len(inputs) == 1 and inputs[0].is_file():
+        return inputs[0].with_suffix(".pdf")
+    if len(inputs) == 1 and inputs[0].is_dir():
+        folder = inputs[0]
+        if separate:
+            return folder.parent
+        return folder.parent / f"{folder.name}.pdf"
+    if separate:
+        return Path.cwd()
+    return Path.cwd() / "输出.pdf"
+
+
 def convert_files_to_pdf(
     input_paths: Iterable[Path],
     output_path: Path,
