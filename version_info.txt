@@ -17,7 +17,7 @@ VSVersionInfo(
           u'080404b0',
           [
             StringStruct(u'CompanyName', u''),
-            StringStruct(u'FileDescription', u'图片转 PDF 工具'),
+            StringStruct(u'FileDescription', u'图片转 PDF 工具--信息科技部周文龙'),
             StringStruct(u'FileVersion', u'1.0.0'),
             StringStruct(u'InternalName', u'ImageToPDF'),
             StringStruct(u'OriginalFilename', u'ImageToPDF.exe'),
