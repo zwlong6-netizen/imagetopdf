@@ -10,6 +10,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
+from folder_picker import pick_folders, pick_subfolders
 from processor import (
     convert_folders_to_pdf,
     merge_pdfs,
@@ -64,7 +65,7 @@ class App(tk.Tk):
     def _build_image_tab(self, parent: ttk.Frame, padding: dict) -> None:
         hint = ttk.Label(
             parent,
-            text="可添加多个文件夹，每个文件夹内的图片按文件名顺序合并为一个 PDF，保存在各文件夹的上级目录；文件夹中的 PDF 文件会自动忽略。",
+            text="可一次多选多个文件夹；也可选择上级目录批量添加其下全部子文件夹。每个文件夹内的图片合并为一个 PDF，保存在各文件夹的上级目录；文件夹中的 PDF 文件会自动忽略。",
             wraplength=520,
         )
         hint.pack(anchor="w", pady=(0, 8))
@@ -86,6 +87,9 @@ class App(tk.Tk):
         btn_row.pack(fill="x", pady=(8, 0))
 
         ttk.Button(btn_row, text="添加文件夹", command=self._add_folders, width=10).pack(side="left")
+        ttk.Button(btn_row, text="添加上级目录", command=self._add_parent_subfolders, width=10).pack(
+            side="left", padx=(4, 0)
+        )
         ttk.Button(btn_row, text="移除", command=self._remove_selected_folder, width=8).pack(
             side="left", padx=(4, 0)
         )
@@ -151,19 +155,35 @@ class App(tk.Tk):
             side="left", padx=(8, 0)
         )
 
+    def _append_folders(self, folders: list[Path]) -> None:
+        existing = {path.resolve() for path in self._folder_paths}
+        added = 0
+        for folder in folders:
+            resolved = folder.resolve()
+            if resolved in existing:
+                continue
+            self._folder_paths.append(folder)
+            existing.add(resolved)
+            added += 1
+
+        if added:
+            self._refresh_folder_listbox()
+            self._append_log(f"已添加 {added} 个文件夹。")
+
     def _add_folders(self) -> None:
-        path = filedialog.askdirectory(title="选择文件夹")
-        if not path:
+        folders = pick_folders("选择文件夹（可多选，按住 Cmd/Ctrl 或 Shift）")
+        if not folders:
             return
+        self._append_folders(folders)
 
-        folder = Path(path)
-        resolved = folder.resolve()
-        if resolved in {p.resolve() for p in self._folder_paths}:
+    def _add_parent_subfolders(self) -> None:
+        folders = pick_subfolders("选择上级目录")
+        if folders is None:
             return
-
-        self._folder_paths.append(folder)
-        self._refresh_folder_listbox()
-        self._append_log(f"已添加文件夹：{folder.name}")
+        if not folders:
+            messagebox.showinfo("提示", "该目录下没有子文件夹。")
+            return
+        self._append_folders(folders)
 
     def _remove_selected_folder(self) -> None:
         selection = self.folder_listbox.curselection()
