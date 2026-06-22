@@ -11,17 +11,11 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from processor import (
-    collect_images,
-    convert_files_to_pdf,
+    convert_folders_to_pdf,
     merge_pdfs,
+    resolve_folder_output,
     resolve_merge_output,
-    resolve_output,
 )
-
-IMAGE_TYPES = [
-    ("图片文件", "*.jpg *.jpeg *.png *.bmp *.tif *.tiff *.webp"),
-    ("所有文件", "*.*"),
-]
 
 PDF_TYPES = [
     ("PDF 文件", "*.pdf"),
@@ -37,11 +31,10 @@ class App(tk.Tk):
         self.minsize(520, 420)
         self.resizable(True, True)
 
-        self.input_path = tk.StringVar()
-        self.output_preview = tk.StringVar(value="选择图片或文件夹后显示输出位置")
+        self.output_preview = tk.StringVar(value="添加文件夹后显示输出位置")
         self._busy = False
-        self.input_path.trace_add("write", lambda *_: self._update_image_output_preview())
 
+        self._folder_paths: list[Path] = []
         self._pdf_paths: list[Path] = []
         self.merge_output_preview = tk.StringVar(value="添加 PDF 文件后显示输出位置")
 
@@ -71,19 +64,32 @@ class App(tk.Tk):
     def _build_image_tab(self, parent: ttk.Frame, padding: dict) -> None:
         hint = ttk.Label(
             parent,
-            text="支持单张图片或整个文件夹；文件夹会按文件名顺序合并为一个 PDF。",
+            text="可添加多个文件夹，每个文件夹内的图片按文件名顺序合并为一个 PDF，保存在各文件夹的上级目录。",
             wraplength=520,
         )
         hint.pack(anchor="w", pady=(0, 8))
 
-        input_frame = ttk.LabelFrame(parent, text="输入", padding=12)
-        input_frame.pack(fill="x", pady=6)
+        list_frame = ttk.LabelFrame(parent, text="待转换文件夹", padding=12)
+        list_frame.pack(fill="both", expand=True, pady=6)
 
-        entry = ttk.Entry(input_frame, textvariable=self.input_path)
-        entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        list_container = ttk.Frame(list_frame)
+        list_container.pack(fill="both", expand=True)
 
-        ttk.Button(input_frame, text="选图片", command=self._pick_file, width=8).pack(side="left", padx=(0, 4))
-        ttk.Button(input_frame, text="选文件夹", command=self._pick_folder, width=8).pack(side="left")
+        scrollbar = ttk.Scrollbar(list_container)
+        scrollbar.pack(side="right", fill="y")
+
+        self.folder_listbox = tk.Listbox(list_container, height=6, yscrollcommand=scrollbar.set)
+        self.folder_listbox.pack(side="left", fill="both", expand=True)
+        scrollbar.config(command=self.folder_listbox.yview)
+
+        btn_row = ttk.Frame(list_frame)
+        btn_row.pack(fill="x", pady=(8, 0))
+
+        ttk.Button(btn_row, text="添加文件夹", command=self._add_folders, width=10).pack(side="left")
+        ttk.Button(btn_row, text="移除", command=self._remove_selected_folder, width=8).pack(
+            side="left", padx=(4, 0)
+        )
+        ttk.Button(btn_row, text="清空", command=self._clear_folders, width=6).pack(side="left", padx=(4, 0))
 
         output_frame = ttk.LabelFrame(parent, text="输出", padding=12)
         output_frame.pack(fill="x", pady=6)
@@ -145,31 +151,52 @@ class App(tk.Tk):
             side="left", padx=(8, 0)
         )
 
-    def _pick_file(self) -> None:
-        path = filedialog.askopenfilename(title="选择图片", filetypes=IMAGE_TYPES)
-        if path:
-            self.input_path.set(path)
-            self._update_image_output_preview()
-
-    def _pick_folder(self) -> None:
+    def _add_folders(self) -> None:
         path = filedialog.askdirectory(title="选择文件夹")
-        if path:
-            self.input_path.set(path)
-            self._update_image_output_preview()
+        if not path:
+            return
+
+        folder = Path(path)
+        resolved = folder.resolve()
+        if resolved in {p.resolve() for p in self._folder_paths}:
+            return
+
+        self._folder_paths.append(folder)
+        self._refresh_folder_listbox()
+        self._append_log(f"已添加文件夹：{folder.name}")
+
+    def _remove_selected_folder(self) -> None:
+        selection = self.folder_listbox.curselection()
+        if not selection:
+            return
+        index = selection[0]
+        removed = self._folder_paths.pop(index)
+        self._refresh_folder_listbox()
+        self._append_log(f"已移除：{removed.name}")
+
+    def _clear_folders(self) -> None:
+        if not self._folder_paths:
+            return
+        self._folder_paths.clear()
+        self._refresh_folder_listbox()
+        self._append_log("已清空文件夹列表。")
+
+    def _refresh_folder_listbox(self) -> None:
+        self.folder_listbox.delete(0, "end")
+        for path in self._folder_paths:
+            self.folder_listbox.insert("end", str(path))
+        self._update_image_output_preview()
 
     def _update_image_output_preview(self) -> None:
-        raw = self.input_path.get().strip()
-        if not raw:
-            self.output_preview.set("选择图片或文件夹后显示输出位置")
+        if not self._folder_paths:
+            self.output_preview.set("添加文件夹后显示输出位置")
             return
 
-        path = Path(raw)
-        if not path.exists():
-            self.output_preview.set("路径不存在")
-            return
-
-        output = resolve_output([path], None, separate=False)
-        self.output_preview.set(str(output.resolve()))
+        lines = [str(resolve_folder_output(folder).resolve()) for folder in self._folder_paths]
+        if len(lines) == 1:
+            self.output_preview.set(lines[0])
+        else:
+            self.output_preview.set("\n".join(lines))
 
     def _refresh_pdf_listbox(self) -> None:
         self.pdf_listbox.delete(0, "end")
@@ -254,56 +281,64 @@ class App(tk.Tk):
         if self._busy:
             return
 
-        raw = self.input_path.get().strip()
-        if not raw:
-            messagebox.showwarning("提示", "请先选择图片或文件夹。")
+        if not self._folder_paths:
+            messagebox.showwarning("提示", "请先添加至少一个文件夹。")
             return
 
-        path = Path(raw)
-        if not path.exists():
-            messagebox.showerror("错误", f"路径不存在：\n{path}")
-            return
+        for path in self._folder_paths:
+            if not path.exists():
+                messagebox.showerror("错误", f"路径不存在：\n{path}")
+                return
+            if not path.is_dir():
+                messagebox.showerror("错误", f"不是文件夹：\n{path}")
+                return
 
-        images = collect_images([path])
-        if not images:
-            messagebox.showerror("错误", "未找到可处理的图片文件。")
-            return
-
-        output = resolve_output([path], None, separate=False)
+        folders = list(self._folder_paths)
         self._set_busy(True)
-        self._append_log(f"共 {len(images)} 张图片，开始转换...")
-        self._append_log(f"输出：{output.resolve()}")
+        self._append_log(f"共 {len(folders)} 个文件夹，开始转换...")
 
         thread = threading.Thread(
             target=self._run_convert,
-            args=([path], output),
+            args=(folders,),
             daemon=True,
         )
         thread.start()
 
-    def _run_convert(self, inputs: list[Path], output: Path) -> None:
+    def _run_convert(self, folders: list[Path]) -> None:
         try:
-            count, errors = convert_files_to_pdf(inputs, output, merge=True)
-            self.after(0, lambda: self._on_convert_done(count, errors, output))
+            folder_count, image_count, errors, outputs = convert_folders_to_pdf(folders)
+            self.after(0, lambda: self._on_convert_done(folder_count, image_count, errors, outputs))
         except Exception as exc:  # noqa: BLE001
             self.after(0, lambda: self._on_convert_failed(str(exc)))
 
-    def _on_convert_done(self, count: int, errors: list[str], output: Path) -> None:
+    def _on_convert_done(
+        self,
+        folder_count: int,
+        image_count: int,
+        errors: list[str],
+        outputs: list[Path],
+    ) -> None:
         self._set_busy(False)
-        if count == 0:
+        if folder_count == 0:
             self._append_log("转换失败。")
             for err in errors:
                 self._append_log(f"  - {err}")
             messagebox.showerror("转换失败", "\n".join(errors) if errors else "未知错误")
             return
 
-        self._append_log(f"完成：成功 {count} 张")
+        self._append_log(f"完成：{folder_count} 个文件夹，共 {image_count} 张图片")
+        for output in outputs:
+            self._append_log(f"  输出：{output.resolve()}")
         for err in errors:
             self._append_log(f"警告：{err}")
 
-        msg = f"已成功转换 {count} 张图片。\n\n输出文件：\n{output.resolve()}"
+        msg = f"已成功转换 {folder_count} 个文件夹，共 {image_count} 张图片。"
+        if len(outputs) == 1:
+            msg += f"\n\n输出文件：\n{outputs[0].resolve()}"
+        elif outputs:
+            msg += "\n\n输出文件：\n" + "\n".join(str(p.resolve()) for p in outputs)
         if errors:
-            msg += f"\n\n有 {len(errors)} 张图片失败，详见状态栏。"
+            msg += f"\n\n有 {len(errors)} 条警告，详见状态栏。"
         messagebox.showinfo("转换完成", msg)
 
     def _on_convert_failed(self, message: str) -> None:
@@ -383,19 +418,18 @@ class App(tk.Tk):
             messagebox.showerror("错误", f"无法打开目录：{exc}")
 
     def _open_image_output_dir(self) -> None:
-        raw = self.input_path.get().strip()
-        if not raw:
-            messagebox.showwarning("提示", "请先选择图片或文件夹。")
+        if not self._folder_paths:
+            messagebox.showwarning("提示", "请先添加文件夹。")
             return
 
-        path = Path(raw)
-        if not path.exists():
-            messagebox.showerror("错误", f"路径不存在：\n{path}")
+        selection = self.folder_listbox.curselection()
+        index = selection[0] if selection else 0
+        folder = self._folder_paths[index]
+        if not folder.exists():
+            messagebox.showerror("错误", f"路径不存在：\n{folder}")
             return
 
-        output = resolve_output([path], None, separate=False)
-        target_dir = output.parent if output.suffix.lower() == ".pdf" else output
-        self._open_directory(target_dir)
+        self._open_directory(resolve_folder_output(folder).parent)
 
     def _open_merge_output_dir(self) -> None:
         if not self._pdf_paths:

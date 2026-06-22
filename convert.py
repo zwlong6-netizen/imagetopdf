@@ -7,7 +7,14 @@ import argparse
 import sys
 from pathlib import Path
 
-from processor import collect_images, convert_files_to_pdf, merge_pdfs, resolve_merge_output, resolve_output
+from processor import (
+    collect_images,
+    convert_files_to_pdf,
+    convert_folders_to_pdf,
+    merge_pdfs,
+    resolve_merge_output,
+    resolve_output,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -21,6 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
   ImageToPDF.exe 图片.jpg -o 输出.pdf
   ImageToPDF.exe ./照片文件夹 -o 合并.pdf
   ImageToPDF.exe ./照片文件夹 --separate -o ./输出目录
+  ImageToPDF.exe ./文件夹A ./文件夹B ./文件夹C
   ImageToPDF.exe --merge-pdf 文件1.pdf 文件2.pdf -o 合并.pdf
         """,
     )
@@ -43,6 +51,10 @@ def cli_main(argv: list[str] | None = None) -> int:
         if not path.exists():
             print(f"错误: 路径不存在 -> {path}", file=sys.stderr)
             return 1
+
+    all_dirs = all(path.is_dir() for path in inputs)
+    if all_dirs and len(inputs) >= 1 and not args.output and not args.separate:
+        return _cli_convert_folders(inputs)
 
     images = collect_images(inputs)
     if not images:
@@ -76,6 +88,33 @@ def cli_main(argv: list[str] | None = None) -> int:
 
     if not sys.stdout.isatty():
         _show_cli_result_dialog(count, errors, output, args.separate)
+
+    return 0
+
+
+def _cli_convert_folders(folders: list[Path]) -> int:
+    print(f"共 {len(folders)} 个文件夹，开始转换...")
+    folder_count, image_count, errors, outputs = convert_folders_to_pdf(folders)
+
+    if folder_count == 0:
+        print("转换失败:", file=sys.stderr)
+        for err in errors:
+            print(f"  - {err}", file=sys.stderr)
+        if not sys.stdout.isatty():
+            _show_cli_error_dialog(errors)
+        return 1
+
+    print(f"完成: 成功 {folder_count} 个文件夹，共 {image_count} 张图片")
+    for output in outputs:
+        print(f"  输出: {output.resolve()}")
+
+    if errors:
+        print(f"警告: {len(errors)} 条", file=sys.stderr)
+        for err in errors:
+            print(f"  - {err}", file=sys.stderr)
+
+    if not sys.stdout.isatty():
+        _show_cli_folders_result_dialog(folder_count, image_count, errors, outputs)
 
     return 0
 
@@ -118,6 +157,34 @@ def _cli_merge_pdfs(args: argparse.Namespace) -> int:
         _show_cli_merge_result_dialog(count, errors, output)
 
     return 0
+
+
+def _show_cli_folders_result_dialog(
+    folder_count: int,
+    image_count: int,
+    errors: list[str],
+    outputs: list[Path],
+) -> None:
+    import tkinter as tk
+    from tkinter import messagebox
+
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+
+    detail = ""
+    if len(outputs) == 1:
+        detail = f"输出文件：\n{outputs[0].resolve()}"
+    elif outputs:
+        detail = "输出文件：\n" + "\n".join(str(p.resolve()) for p in outputs)
+    if errors:
+        detail += f"\n\n有 {len(errors)} 条警告。"
+
+    messagebox.showinfo(
+        "转换完成",
+        f"已成功转换 {folder_count} 个文件夹，共 {image_count} 张图片。\n\n{detail}",
+    )
+    root.destroy()
 
 
 def _show_cli_merge_result_dialog(count: int, errors: list[str], output: Path) -> None:

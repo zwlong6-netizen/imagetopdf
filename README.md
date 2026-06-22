@@ -27,7 +27,7 @@ GitHub Actions 在 `windows-latest`（x86_64）上构建，Mac ARM 只需负责�
 
 **图形界面（推荐）：** 双击 `ImageToPDF.exe` 即可打开界面。
 
-- **图片转 PDF**：选择图片或文件夹后点击「开始转换」
+- **图片转 PDF**：可添加多个文件夹，每个文件夹内的图片合并为一个 PDF，保存在各文件夹的上级目录
 - **PDF 合并**：切换到「PDF 合并」标签页，添加多个 PDF 后点击「开始合并」
 
 **命令行：**
@@ -37,11 +37,13 @@ ImageToPDF.exe 图片.jpg
 ImageToPDF.exe 图片.jpg -o 输出.pdf
 ImageToPDF.exe 文件夹 -o 合并.pdf
 ImageToPDF.exe 文件夹 --separate -o 输出目录
+ImageToPDF.exe 文件夹A 文件夹B 文件夹C
 ImageToPDF.exe --merge-pdf 文件1.pdf 文件2.pdf -o 合并.pdf
 ```
 
 - 单张图片：在图片同目录生成同名 PDF（或通过 `-o` 指定路径）
-- 文件夹：按文件名中的**数字顺序**合并为一份 PDF，输出到**文件夹同级目录**，文件名为文件夹名（如 `D:/照片/我的资料/` → `D:/照片/我的资料.pdf`）
+- 单个文件夹：按文件名中的**数字顺序**合并为一份 PDF，输出到**文件夹上级目录**，文件名为文件夹名（如 `D:/照片/我的资料/` → `D:/照片/我的资料.pdf`）
+- 多个文件夹：各自合并为 PDF，保存在对应文件夹的上级目录（通常为同一目录）
 
 也可把图片拖到 **`运行示例.bat`** 上。
 

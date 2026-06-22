@@ -41,6 +41,11 @@ def save_images_as_pdf(image_paths: List[Path], output_path: Path) -> None:
     output_path.write_bytes(pdf_bytes)
 
 
+def resolve_folder_output(folder: Path) -> Path:
+    """单个文件夹的输出 PDF 路径（保存在文件夹的上级目录）。"""
+    return folder.parent / f"{folder.name}.pdf"
+
+
 def resolve_output(inputs: list[Path], output: str | None, separate: bool) -> Path:
     if output:
         return Path(output)
@@ -49,8 +54,8 @@ def resolve_output(inputs: list[Path], output: str | None, separate: bool) -> Pa
     if len(inputs) == 1 and inputs[0].is_dir():
         folder = inputs[0]
         if separate:
-            return folder.parent
-        return folder.parent / f"{folder.name}.pdf"
+            return folder
+        return resolve_folder_output(folder)
     if separate:
         return Path.cwd()
     return Path.cwd() / "输出.pdf"
@@ -94,6 +99,45 @@ def convert_files_to_pdf(
             errors.append(f"{path.name}: {exc}")
 
     return success, errors
+
+
+def convert_folders_to_pdf(
+    folders: Iterable[Path],
+) -> Tuple[int, int, List[str], List[Path]]:
+    """将多个文件夹各自合并为 PDF，保存在各文件夹的上级目录。
+
+    Returns:
+        (成功文件夹数, 总图片数, 错误列表, 输出文件列表)
+    """
+    folder_success = 0
+    total_images = 0
+    errors: List[str] = []
+    outputs: List[Path] = []
+
+    for folder in folders:
+        if not folder.is_dir():
+            errors.append(f"{folder}: 不是文件夹")
+            continue
+
+        images = collect_images([folder])
+        if not images:
+            errors.append(f"{folder.name}: 未找到图片")
+            continue
+
+        output = resolve_folder_output(folder)
+        count, folder_errors = convert_files_to_pdf([folder], output, merge=True)
+        if count == 0:
+            for err in folder_errors:
+                errors.append(f"{folder.name}: {err}")
+            continue
+
+        folder_success += 1
+        total_images += count
+        outputs.append(output)
+        for err in folder_errors:
+            errors.append(f"{folder.name}: {err}")
+
+    return folder_success, total_images, errors, outputs
 
 
 def is_pdf(path: Path) -> bool:
