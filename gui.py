@@ -64,7 +64,7 @@ class App(tk.Tk):
     def _build_image_tab(self, parent: ttk.Frame, padding: dict) -> None:
         hint = ttk.Label(
             parent,
-            text="可添加多个文件夹，每个文件夹内的图片按文件名顺序合并为一个 PDF，保存在各文件夹的上级目录。",
+            text="可添加多个文件夹，每个文件夹内的图片按文件名顺序合并为一个 PDF，保存在各文件夹的上级目录；文件夹中的 PDF 文件会自动忽略。",
             wraplength=520,
         )
         hint.pack(anchor="w", pady=(0, 8))

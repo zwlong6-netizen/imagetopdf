@@ -16,6 +16,13 @@ def is_supported_image(path: Path) -> bool:
     return path.suffix.lower() in SUPPORTED_EXTENSIONS
 
 
+def should_collect_file(path: Path) -> bool:
+    """文件夹扫描时只收集图片，PDF 等非图片文件直接忽略。"""
+    if path.suffix.lower() == ".pdf":
+        return False
+    return is_supported_image(path)
+
+
 def _natural_sort_key(path: Path) -> list:
     """自然排序：个人xxx1 < 个人xxx2 < 个人xxx10"""
     parts = re.split(r"(\d+)", path.name)
@@ -27,9 +34,9 @@ def collect_images(paths: Iterable[Path]) -> List[Path]:
     for path in paths:
         if path.is_dir():
             for child in path.iterdir():
-                if child.is_file() and is_supported_image(child):
+                if child.is_file() and should_collect_file(child):
                     images.append(child)
-        elif path.is_file() and is_supported_image(path):
+        elif path.is_file() and should_collect_file(path):
             images.append(path)
     images.sort(key=_natural_sort_key)
     return images
