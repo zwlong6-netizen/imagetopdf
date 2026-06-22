@@ -32,7 +32,6 @@ class App(tk.Tk):
         self.minsize(520, 420)
         self.resizable(True, True)
 
-        self.output_preview = tk.StringVar(value="添加文件夹后显示输出位置")
         self._busy = False
 
         self._folder_paths: list[Path] = []
@@ -98,7 +97,22 @@ class App(tk.Tk):
         output_frame = ttk.LabelFrame(parent, text="输出", padding=12)
         output_frame.pack(fill="x", pady=6)
 
-        ttk.Label(output_frame, textvariable=self.output_preview, wraplength=500).pack(anchor="w")
+        output_container = ttk.Frame(output_frame)
+        output_container.pack(fill="x")
+
+        output_scroll = ttk.Scrollbar(output_container)
+        output_scroll.pack(side="right", fill="y")
+
+        self.output_preview_text = tk.Text(
+            output_container,
+            height=3,
+            wrap="word",
+            state="disabled",
+            yscrollcommand=output_scroll.set,
+        )
+        self.output_preview_text.pack(side="left", fill="x", expand=True)
+        output_scroll.config(command=self.output_preview_text.yview)
+        self._set_preview_text(self.output_preview_text, "添加文件夹后显示输出位置")
 
         action_frame = ttk.Frame(parent)
         action_frame.pack(fill="x", pady=6)
@@ -155,6 +169,12 @@ class App(tk.Tk):
             side="left", padx=(8, 0)
         )
 
+    def _set_preview_text(self, widget: tk.Text, content: str) -> None:
+        widget.configure(state="normal")
+        widget.delete("1.0", "end")
+        widget.insert("1.0", content)
+        widget.configure(state="disabled")
+
     def _append_folders(self, folders: list[Path]) -> None:
         existing = {path.resolve() for path in self._folder_paths}
         added = 0
@@ -209,14 +229,15 @@ class App(tk.Tk):
 
     def _update_image_output_preview(self) -> None:
         if not self._folder_paths:
-            self.output_preview.set("添加文件夹后显示输出位置")
+            self._set_preview_text(self.output_preview_text, "添加文件夹后显示输出位置")
             return
 
         lines = [str(resolve_folder_output(folder).resolve()) for folder in self._folder_paths]
         if len(lines) == 1:
-            self.output_preview.set(lines[0])
+            content = lines[0]
         else:
-            self.output_preview.set("\n".join(lines))
+            content = f"共 {len(lines)} 个文件\n" + "\n".join(lines)
+        self._set_preview_text(self.output_preview_text, content)
 
     def _refresh_pdf_listbox(self) -> None:
         self.pdf_listbox.delete(0, "end")
