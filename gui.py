@@ -64,7 +64,7 @@ class App(tk.Tk):
     def _build_image_tab(self, parent: ttk.Frame, padding: dict) -> None:
         hint = ttk.Label(
             parent,
-            text="可一次多选多个文件夹；也可选择上级目录批量添加其下全部子文件夹。每个文件夹内的图片合并为一个 PDF，保存在各文件夹的上级目录；文件夹中的 PDF 文件会自动忽略。",
+            text="可一次多选多个文件夹（Windows）；macOS 可多次点击添加。也可选择上级目录批量添加其下全部子文件夹。每个文件夹内的图片合并为一个 PDF，保存在各文件夹的上级目录；文件夹中的 PDF 文件会自动忽略。",
             wraplength=520,
         )
         hint.pack(anchor="w", pady=(0, 8))
@@ -191,13 +191,13 @@ class App(tk.Tk):
             self._append_log(f"已添加 {added} 个文件夹。")
 
     def _add_folders(self) -> None:
-        folders = pick_folders("选择文件夹（可多选，按住 Cmd/Ctrl 或 Shift）")
+        folders = pick_folders("选择文件夹", parent=self)
         if not folders:
             return
         self._append_folders(folders)
 
     def _add_parent_subfolders(self) -> None:
-        folders = pick_subfolders("选择上级目录")
+        folders = pick_subfolders("选择上级目录", parent=self)
         if folders is None:
             return
         if not folders:

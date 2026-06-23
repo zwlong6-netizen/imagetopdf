@@ -1,72 +1,48 @@
-"""跨平台多文件夹选择对话框。"""
+"""跨平台文件夹选择对话框。"""
 
 from __future__ import annotations
 
 import subprocess
 import sys
 from pathlib import Path
+from tkinter import filedialog
+from typing import Any
 
 
-def pick_folders(title: str = "选择文件夹（可多选）") -> list[Path]:
-    if sys.platform == "darwin":
-        paths = _pick_folders_macos(title)
-    elif sys.platform == "win32":
-        paths = _pick_folders_windows(title)
+def pick_folders(title: str = "选择文件夹", parent: Any | None = None) -> list[Path]:
+    if sys.platform == "win32":
+        paths = _pick_folders_windows(title, parent)
+    elif sys.platform == "linux":
+        paths = _pick_folders_linux(title, parent)
     else:
-        paths = _pick_folders_linux(title)
+        paths = _pick_folders_tk(title, parent)
 
     return [Path(p) for p in paths if p]
 
 
-def pick_subfolders(title: str = "选择上级目录") -> list[Path] | None:
+def pick_subfolders(title: str = "选择上级目录", parent: Any | None = None) -> list[Path] | None:
     """选择上级目录，返回其下所有直接子文件夹；取消选择时返回 None。"""
-    parent = _pick_single_folder(title)
-    if parent is None:
+    selected = _pick_single_folder(title, parent)
+    if selected is None:
         return None
 
     return sorted(
-        [path for path in parent.iterdir() if path.is_dir()],
+        [path for path in selected.iterdir() if path.is_dir()],
         key=lambda path: path.name.lower(),
     )
 
 
-def _pick_single_folder(title: str) -> Path | None:
-    import tkinter as tk
-    from tkinter import filedialog
-
-    root = tk.Tk()
-    root.withdraw()
-    root.attributes("-topmost", True)
-    try:
-        selected = filedialog.askdirectory(title=title, parent=root)
-    finally:
-        root.destroy()
-
+def _pick_single_folder(title: str, parent: Any | None = None) -> Path | None:
+    selected = filedialog.askdirectory(title=title, parent=parent)
     return Path(selected) if selected else None
 
 
-def _pick_folders_macos(title: str) -> list[str]:
-    safe_title = title.replace("\\", "\\\\").replace('"', '\\"')
-    script = f'''
-    set selectedFolders to choose folder with prompt "{safe_title}" with multiple selections allowed
-    set out to ""
-    repeat with aFolder in selectedFolders
-        set out to out & POSIX path of aFolder & linefeed
-    end repeat
-    return out
-    '''
-    result = subprocess.run(
-        ["osascript", "-e", script],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        return []
-    return [line for line in result.stdout.splitlines() if line.strip()]
+def _pick_folders_tk(title: str, parent: Any | None = None) -> list[str]:
+    selected = _pick_single_folder(title, parent)
+    return [str(selected)] if selected else []
 
 
-def _pick_folders_linux(title: str) -> list[str]:
+def _pick_folders_linux(title: str, parent: Any | None = None) -> list[str]:
     try:
         result = subprocess.run(
             ["zenity", "--file-selection", "--directory", "--multiple", f"--title={title}"],
@@ -75,29 +51,27 @@ def _pick_folders_linux(title: str) -> list[str]:
             check=False,
         )
     except FileNotFoundError:
-        return _pick_folders_fallback(title)
+        return _pick_folders_tk(title, parent)
 
     if result.returncode != 0:
         return []
     return [part for part in result.stdout.strip().split("|") if part]
 
 
-def _pick_folders_fallback(title: str) -> list[str]:
-    selected = _pick_single_folder(title)
-    return [str(selected)] if selected else []
-
-
-def _pick_folders_windows(title: str) -> list[str]:
+def _pick_folders_windows(title: str, parent: Any | None = None) -> list[str]:
     try:
-        return _pick_folders_windows_dialog(title)
+        paths = _pick_folders_windows_dialog(title, parent)
+        if paths:
+            return paths
     except Exception:
-        return _pick_folders_fallback(title)
+        pass
+    return _pick_folders_tk(title, parent)
 
 
-def _pick_folders_windows_dialog(title: str) -> list[str]:
+def _pick_folders_windows_dialog(title: str, parent: Any | None = None) -> list[str]:
     import ctypes
     from ctypes import POINTER, Structure, byref, c_int, c_uint, c_void_p, cast, windll
-    from ctypes.wintypes import LPWSTR
+    from ctypes.wintypes import HWND, LPWSTR
 
     class GUID(Structure):
         _fields_ = [
@@ -116,14 +90,11 @@ def _pick_folders_windows_dialog(title: str) -> list[str]:
 
     CLSID_FileOpenDialog = guid_from_string("{DC1C5A9C-E88A-4dde-B5A1-60F82A20AEF7}")
     IID_IFileOpenDialog = guid_from_string("{D57C7288-D4AD-4768-BE02-9D96953223E6}")
-    IID_IShellItemArray = guid_from_string("{B63EA76D-1F85-456F-A19C-48159EFA858B}")
-    IID_IShellItem = guid_from_string("{43826D1E-E718-42EE-0525-852C99DF6716}")
 
     CLSCTX_INPROC_SERVER = 0x1
     FOS_PICKFOLDERS = 0x20
     FOS_ALLOWMULTISELECT = 0x200
     FOS_PATHMUSTEXIST = 0x800
-    FOS_FILEMUSTEXIST = 0x1000
     SIGDN_FILESYSPATH = 0x80058000
     S_OK = 0
 
@@ -146,17 +117,18 @@ def _pick_folders_windows_dialog(title: str) -> list[str]:
         methods = cast(vtable, POINTER(c_void_p))
 
         SetOptions = ctypes.WINFUNCTYPE(c_int, c_void_p, c_uint)(methods[10])
-        Show = ctypes.WINFUNCTYPE(c_int, c_void_p, c_void_p)(methods[3])
+        Show = ctypes.WINFUNCTYPE(c_int, c_void_p, HWND)(methods[3])
         GetResults = ctypes.WINFUNCTYPE(c_int, c_void_p, POINTER(c_void_p))(methods[27])
         SetTitle = ctypes.WINFUNCTYPE(c_int, c_void_p, LPWSTR)(methods[17])
 
-        options = FOS_PICKFOLDERS | FOS_ALLOWMULTISELECT | FOS_PATHMUSTEXIST | FOS_FILEMUSTEXIST
+        options = FOS_PICKFOLDERS | FOS_ALLOWMULTISELECT | FOS_PATHMUSTEXIST
         if SetOptions(dialog, options) != S_OK:
             return []
-        if title and SetTitle(dialog, title) != S_OK:
-            pass
+        if title:
+            SetTitle(dialog, title)
 
-        if Show(dialog, None) != S_OK:
+        owner = HWND(parent.winfo_id()) if parent is not None else HWND(0)
+        if Show(dialog, owner) != S_OK:
             return []
 
         items = c_void_p()
