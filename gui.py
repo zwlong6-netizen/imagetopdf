@@ -28,8 +28,8 @@ class App(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("图片转 PDF")
-        self.geometry("600x520")
-        self.minsize(520, 420)
+        self.geometry("600x580")
+        self.minsize(520, 480)
         self.resizable(True, True)
 
         self._busy = False
